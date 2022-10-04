@@ -1,0 +1,269 @@
+{
+  "id": "onboarding",
+  "name": "Zenika Onboarding Version",
+  "version": "1.0",
+  "timeouts": {
+    "workflowExecTimeout": {
+      "duration": "PT1M",
+      "interrupt": true
+    },
+    "actionExecTimeout": "PT10S"
+  },
+  "retries": [
+    {
+      "name": "WorkflowRetries",
+      "delay": "PT3S",
+      "maxAttempts": "10"
+    }
+  ],
+  "start": "CreationUtilisateurSocle",
+  "states": [
+    {
+      "name": "CreationUtilisateurSocle",
+      "type": "operation",
+      "actionMode": "sequential",
+      "actions": [
+        { 
+          "name": "Create employee",
+          "functionRef": "CreateEmployee"
+        }
+      ],
+      "transition": "EnvoyerFicheEmbauche"
+    },
+    {
+      "name": "EnvoyerFicheEmbauche",
+      "type": "operation",
+      "actionMode": "sequential",
+      "actions": [
+        { 
+          "name": "Send Hiring Note",
+          "functionRef": "SendHiringNote"
+        }
+      ],
+      "transition": "SaisieFicheEmbauche"
+    },
+    {
+      "name": "SaisieFicheEmbauche",
+      "type": "event",
+      "onEvents": [
+        {
+          "eventRefs": [
+            "HiringFormFilledEvent"
+          ]
+        }
+      ],
+      "transition": "GenererContrat"
+    },
+    {
+      "name": "GenererContrat",
+      "type": "operation",
+      "actions": [
+        {
+          "name": "Generate Contract",
+          "functionRef": {
+            "refName": "GenerateContract"
+          }
+        }
+      ],
+      "transition": "NotifierContratASigner"
+    },
+    {
+      "name": "NotifierContratASigner",
+      "type": "operation",
+      "actions": [
+        {
+          "name": "Notify Contract to sign",
+          "functionRef": {
+            "refName": "NotifyContractToSign"
+          }
+        }
+      ],
+      "transition": "SignatureContrat"
+    },
+    {
+      "name": "SignatureContrat",
+      "type": "event",
+      "onEvents": [
+        {
+          "eventRefs": [
+            "ContractSignedEvent"
+          ]
+        }
+      ],
+      "transition": "EnvoyerMailBienvenue"
+    },
+    {
+      "name": "EnvoyerMailBienvenue",
+      "type": "operation",
+      "actions": [
+        {
+          "name": "Send welcome mail",
+          "functionRef": {
+            "refName": "SendWelcomeEmail"
+          }
+        }
+      ],
+      "transition": "PlanifierVisiteMedicale"
+    },
+    {
+      "name": "PlanifierVisiteMedicale",
+      "type": "operation",
+      "actions": [
+        {
+          "name": "Plan medical visit",
+          "functionRef": {
+            "refName": "PlanMedicalVisit"
+          }
+        }
+      ],
+      "transition": "FormationIntegrationEtEntretientPremierMois"
+    },
+    {
+      "name": "FormationIntegrationEtEntretientPremierMois",
+      "type": "event",
+      "exclusive": false,
+      "onEvents": [
+        {
+          "eventRefs": [
+            "IntegrationTraningEvent",
+            "FirstMonthInterviewEvent"
+          ]
+        }
+      ],
+      "transition": "EntretienPeriodeEssai"
+    },
+    {
+      "name": "EntretienPeriodeEssai",
+      "type": "event",
+      "onEvents": [
+        {
+          "eventRefs": [
+            "ValidateTrialPeriodEvent",
+            "RenewTrialPeriodEvent",
+            "CancelTrialPeriodEvent"
+          ]
+        }
+      ],
+      "transition": "ResultatEntretien"
+    },
+    {
+      "name": "ResultatEntretien",
+      "type": "switch",
+      "eventConditions": [
+        {
+          "name": "EmployeeNotHired",
+          "eventRef": "CancelTrialPeriodEvent",
+          "transition": "SupprimerEmployee"
+        },
+        {
+          "name": "TrialPeriodRenewed",
+          "eventRef": "RenewTrialPeriodEvent",
+          "transition": "EntretienPeriodeEssai"
+        },
+        {
+          "name": "ValidationTrialPeriod",
+          "eventRef": "ValidateTrialPeriodEvent",
+          "transition": "ValiderEmployee"
+        }
+      ],
+      "defaultCondition": {
+        "transition": "EntretienPeriodeEssai"
+      }
+    },
+    {
+      "name": "SupprimerEmployee",
+      "type": "operation",
+      "actions": [
+        {
+          "functionRef": {
+            "refName": "DeleteEmployee"
+          }
+        }
+      ],
+      "end": true
+    },
+    {
+      "name": "ValiderEmployee",
+      "type": "operation",
+      "actions": [
+        {
+          "functionRef": {
+            "refName": "ValidateEmployee"
+          }
+        }
+      ],
+      "end": true
+    }
+  ],
+  "functions": [
+    {
+      "name": "CreateEmployee",
+      "type": "rest"
+    },
+    {
+      "name": "SendHiringNote",
+      "type": "rest"
+    },
+    {
+      "name": "GenerateContract",
+      "type": "rest"
+    },
+    {
+      "name": "NotifyContractToSign",
+      "type": "rest"
+    },
+    {
+      "name": "SendWelcomeEmail",
+      "type": "rest"
+    },
+    {
+      "name": "PlanMedicalVisit",
+      "type": "rest"
+    },
+    {
+      "name": "DeleteEmployee",
+      "type": "rest"
+    },
+    {
+      "name": "ValidateEmployee",
+      "type": "rest"
+    }    
+  ],
+  "events": [
+    {
+      "name": "HiringFormFilledEvent",
+      "type": "com.fasterxml.jackson.databind.JsonNode",
+      "source": "applicationsSource"
+    },
+    {
+      "name": "ContractSignedEvent",
+      "type": "com.fasterxml.jackson.databind.JsonNode",
+      "source": "applicationsSource"
+    },
+    {
+      "name": "IntegrationTraningEvent",
+      "type": "com.fasterxml.jackson.databind.JsonNode",
+      "source": "applicationsSource"
+    },
+    {
+      "name": "FirstMonthInterviewEvent",
+      "type": "com.fasterxml.jackson.databind.JsonNode",
+      "source": "applicationsSource"
+    },
+    {
+      "name": "ValidateTrialPeriodEvent",
+      "type": "com.fasterxml.jackson.databind.JsonNode",
+      "source": "applicationsSource"
+    },
+    {
+      "name": "RenewTrialPeriodEvent",
+      "type": "com.fasterxml.jackson.databind.JsonNode",
+      "source": "applicationsSource"
+    },
+    {
+      "name": "CancelTrialPeriodEvent",
+      "type": "com.fasterxml.jackson.databind.JsonNode",
+      "source": "applicationsSource"
+    }
+  ]
+}
