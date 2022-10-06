@@ -1,0 +1,30 @@
+{
+    "id": "onboarding-child-firstmonthreview",
+    "name": "Zenika Entretien premier mois",
+    "version": "1.0",
+    "start": "EntretienPremierMois",
+    "states": [
+    {
+        "name": "EntretienPremierMois",
+        "type": "event",
+        "onEvents": [
+          {
+            "eventRefs": [
+              "FirstMonthReviewEvent"
+            ]
+          }
+        ],
+        "stateDataFilter": {
+          "output": "{ \"type\" : \"onboarding-child-firstmonthreview subflow\", \"result\" : \"invoked\"}"
+        },
+        "end": true
+      }
+    ],
+    "events": [
+        {
+          "name": "FirstMonthReviewEvent",
+          "type": "com.fasterxml.jackson.databind.JsonNode",
+          "source": "applicationsSource"
+        }
+    ]
+}

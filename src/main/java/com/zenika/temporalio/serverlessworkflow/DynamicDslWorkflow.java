@@ -38,6 +38,7 @@ import io.serverlessworkflow.api.states.ParallelState;
 import io.serverlessworkflow.api.states.SleepState;
 import io.serverlessworkflow.api.states.SwitchState;
 import io.serverlessworkflow.api.switchconditions.DataCondition;
+import io.serverlessworkflow.api.switchconditions.EventCondition;
 import io.serverlessworkflow.utils.WorkflowUtils;
 import io.temporal.activity.ActivityOptions;
 import io.temporal.api.common.v1.WorkflowExecution;
@@ -58,6 +59,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 
 public class DynamicDslWorkflow implements DynamicWorkflow {
@@ -67,6 +69,7 @@ public class DynamicDslWorkflow implements DynamicWorkflow {
   private WorkflowData workflowData = new WorkflowData();
   private List<FunctionDefinition> queryFunctions;
   private Map<String, WorkflowData> signalMap = new HashMap<>();
+  private EventCondition selectedSwitchCondition;
 
   private ActivityStub activities;
 
@@ -79,7 +82,8 @@ public class DynamicDslWorkflow implements DynamicWorkflow {
     workflowData.setValue((ObjectNode) args.get(2, JsonNode.class));
 
     // Using a global shared workflow object here is only allowed because its
-    // assumed that at this point it is immutable and the same across all workflow worker restarts
+    // assumed that at this point it is immutable and the same across all workflow
+    // worker restarts
     dslWorkflow = DslWorkflowCache.getWorkflow(dslWorkflowId, dslWorkflowVersion);
 
     // Get all expression type functions to be used for queries
@@ -129,7 +133,8 @@ public class DynamicDslWorkflow implements DynamicWorkflow {
     // Create a dynamic activities stub to be used for all actions in dsl
     activities = Workflow.newUntypedActivityStub(activityOptions);
 
-    // Start going through the dsl workflow states and execute depending on their instructions
+    // Start going through the dsl workflow states and execute depending on their
+    // instructions
     executeDslWorkflowFrom(WorkflowUtils.getStartingState(dslWorkflow));
 
     // Return the final workflow data as result
@@ -138,10 +143,12 @@ public class DynamicDslWorkflow implements DynamicWorkflow {
 
   /** Executes workflow according to the dsl control flow logic */
   private void executeDslWorkflowFrom(State dslWorkflowState) {
-    // This demo supports 3 states: Event State, Operation State and Switch state (data-based
+    // This demo supports 3 states: Event State, Operation State and Switch state
+    // (data-based
     // switch)
     if (dslWorkflowState != null) {
-      // execute the state and return the next workflow state depending on control flow logic in dsl
+      // execute the state and return the next workflow state depending on control
+      // flow logic in dsl
       // if next state is null it means that we need to stop execution
       executeDslWorkflowFrom(executeStateAndReturnNext(dslWorkflowState));
     } else {
@@ -165,7 +172,15 @@ public class DynamicDslWorkflow implements DynamicWorkflow {
           // no actions..assume we are just waiting on event here
           Workflow.await(
               () -> signalMap.containsKey(eventState.getOnEvents().get(0).getEventRefs().get(0)));
-          workflowData = signalMap.get(eventState.getOnEvents().get(0).getEventRefs().get(0));
+          // TODO : all result should be filtered by stateDataFilter with jq filter
+          // expressions
+          if (eventState.getStateDataFilter() != null
+              && StringUtils.isNoneEmpty(eventState.getStateDataFilter().getOutput())) {
+            // not really a filtering, just a replace for the sake of the demo
+            workflowData = new WorkflowData(eventState.getStateDataFilter().getOutput());
+          } else {
+            workflowData = signalMap.get(eventState.getOnEvents().get(0).getEventRefs().get(0));
+          }
         } else {
           List<Action> eventStateActions = eventState.getOnEvents().get(0).getActions();
           if (eventState.getOnEvents().get(0).getActionMode() != null
@@ -326,7 +341,8 @@ public class DynamicDslWorkflow implements DynamicWorkflow {
       // Demo supports only data based switch
       SwitchState switchState = (SwitchState) dslWorkflowState;
       if (switchState.getDataConditions() != null && switchState.getDataConditions().size() > 0) {
-        // evaluate each condition to see if its true. If none are true default to defaultCondition
+        // evaluate each condition to see if its true. If none are true default to
+        // defaultCondition
         for (DataCondition dataCondition : switchState.getDataConditions()) {
           if (JQFilter.getInstance()
               .evaluateBooleanExpression(dataCondition.getCondition(), workflowData.getValue())) {
@@ -344,6 +360,29 @@ public class DynamicDslWorkflow implements DynamicWorkflow {
         }
         return WorkflowUtils.getStateWithName(
             dslWorkflow, switchState.getDefaultCondition().getTransition().getNextState());
+      } else if (switchState.getEventConditions() != null
+          && switchState.getEventConditions().size() > 0) {
+        selectedSwitchCondition = null;
+
+        Workflow.await(
+            () -> {
+              for (EventCondition eventCondition : switchState.getEventConditions()) {
+                if (signalMap.containsKey(eventCondition.getEventRef())) {
+                  selectedSwitchCondition = eventCondition;
+                  return true;
+                }
+              }
+              return false;
+            });
+        if (selectedSwitchCondition != null) {
+          if (selectedSwitchCondition.getTransition() == null
+              || selectedSwitchCondition.getTransition().getNextState() == null) {
+            return null;
+          }
+          return WorkflowUtils.getStateWithName(
+              dslWorkflow, selectedSwitchCondition.getTransition().getNextState());
+        }
+        return null;
       } else {
         // no conditions use the transition/end of default condition
         if (switchState.getDefaultCondition().getTransition() == null) {
@@ -353,6 +392,7 @@ public class DynamicDslWorkflow implements DynamicWorkflow {
             dslWorkflow, switchState.getDefaultCondition().getTransition().getNextState());
       }
     } else if (dslWorkflowState instanceof SleepState) {
+
       SleepState sleepState = (SleepState) dslWorkflowState;
       if (sleepState.getDuration() != null) {
         Workflow.sleep(Duration.parse(sleepState.getDuration()));
@@ -428,11 +468,30 @@ public class DynamicDslWorkflow implements DynamicWorkflow {
     // we should check the action mode to see if its sequential or parallel
     // will add...
     List<Promise<ActResult>> branchActionPromises = new ArrayList<>();
+
     List<Action> branchActions = branch.getActions();
     for (Action action : branchActions) {
-      branchActionPromises.add(
-          activities.executeAsync(
-              action.getFunctionRef().getRefName(), ActResult.class, workflowData.getEmployee()));
+
+      if (action.getFunctionRef() != null) {
+        branchActionPromises.add(
+            activities.executeAsync(
+                action.getFunctionRef().getRefName(), ActResult.class, workflowData.getEmployee()));
+      } else if (action.getSubFlowRef() != null) {
+        ChildWorkflowOptions childWorkflowOptions =
+            ChildWorkflowOptions.newBuilder()
+                .setWorkflowId(action.getSubFlowRef().getWorkflowId())
+                .build();
+
+        ChildWorkflowStub childWorkflow =
+            Workflow.newUntypedChildWorkflowStub(
+                action.getSubFlowRef().getWorkflowId(), childWorkflowOptions);
+        branchActionPromises.add(
+            childWorkflow.executeAsync(
+                ActResult.class,
+                action.getSubFlowRef().getWorkflowId(),
+                action.getSubFlowRef().getVersion(),
+                workflowData.getValue()));
+      }
     }
 
     Promise.allOf(branchActionPromises).get();

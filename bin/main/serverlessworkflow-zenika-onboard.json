@@ -4,16 +4,15 @@
   "version": "1.0",
   "timeouts": {
     "workflowExecTimeout": {
-      "duration": "PT1M",
-      "interrupt": true
+      "duration": "PT60M"
     },
-    "actionExecTimeout": "PT10S"
+    "actionExecTimeout": "PT10M"
   },
   "retries": [
     {
       "name": "WorkflowRetries",
       "delay": "PT3S",
-      "maxAttempts": "10"
+      "maxAttempts": "0"
     }
   ],
   "start": "CreationUtilisateurSocle",
@@ -23,7 +22,7 @@
       "type": "operation",
       "actionMode": "sequential",
       "actions": [
-        { 
+        {
           "name": "Create employee",
           "functionRef": "CreateEmployee"
         }
@@ -35,7 +34,7 @@
       "type": "operation",
       "actionMode": "sequential",
       "actions": [
-        { 
+        {
           "name": "Send Hiring Note",
           "functionRef": "SendHiringNote"
         }
@@ -103,30 +102,46 @@
           }
         }
       ],
-      "transition": "PlanifierVisiteMedicale"
+      "transition": "Integration"
     },
     {
-      "name": "PlanifierVisiteMedicale",
-      "type": "operation",
-      "actions": [
+      "name": "Integration",
+      "type": "parallel",
+      "completionType": "allOf",
+      "branches": [
         {
-          "name": "Plan medical visit",
-          "functionRef": {
-            "refName": "PlanMedicalVisit"
-          }
-        }
-      ],
-      "transition": "FormationIntegrationEtEntretientPremierMois"
-    },
-    {
-      "name": "FormationIntegrationEtEntretientPremierMois",
-      "type": "event",
-      "exclusive": false,
-      "onEvents": [
+          "name": "PlanifierVisiteMedicale",
+          "actions": [
+            {
+              "name": "Plan medical visit",
+              "functionRef": {
+                "refName": "PlanMedicalVisit"
+              }
+            }
+          ]
+        },
         {
-          "eventRefs": [
-            "IntegrationTraningEvent",
-            "FirstMonthInterviewEvent"
+          "name": "EntretienPremierMois",
+          "actions": [
+            {
+              "name": "Entretien premier mois",
+              "subFlowRef": {
+                "workflowId": "onboarding-child-firstmonthreview",
+                "version": "1.0"
+              }
+            }
+          ]
+        },
+        {
+          "name": "FormationIntegration",
+          "actions": [
+            {
+              "name": "Formation intégration",
+              "subFlowRef": {
+                "workflowId": "onboarding-child-integrationtraining",
+                "version": "1.0"
+              }
+            }
           ]
         }
       ],
@@ -134,47 +149,34 @@
     },
     {
       "name": "EntretienPeriodeEssai",
-      "type": "event",
-      "onEvents": [
-        {
-          "eventRefs": [
-            "ValidateTrialPeriodEvent",
-            "RenewTrialPeriodEvent",
-            "CancelTrialPeriodEvent"
-          ]
-        }
-      ],
-      "transition": "ResultatEntretien"
-    },
-    {
-      "name": "ResultatEntretien",
       "type": "switch",
       "eventConditions": [
         {
+          "name": "ValidationTrialPeriod",
+          "eventRef": "ValidateTrialPeriodEvent",
+          "transition": "ValiderEmploye"
+        },
+        {
           "name": "EmployeeNotHired",
           "eventRef": "CancelTrialPeriodEvent",
-          "transition": "SupprimerEmployee"
+          "transition": "SupprimerEmploye"
         },
         {
           "name": "TrialPeriodRenewed",
           "eventRef": "RenewTrialPeriodEvent",
           "transition": "EntretienPeriodeEssai"
-        },
-        {
-          "name": "ValidationTrialPeriod",
-          "eventRef": "ValidateTrialPeriodEvent",
-          "transition": "ValiderEmployee"
         }
       ],
       "defaultCondition": {
-        "transition": "EntretienPeriodeEssai"
+        "end": true
       }
     },
     {
-      "name": "SupprimerEmployee",
+      "name": "SupprimerEmploye",
       "type": "operation",
       "actions": [
         {
+          "name": "Supprimer l'employé",
           "functionRef": {
             "refName": "DeleteEmployee"
           }
@@ -183,10 +185,11 @@
       "end": true
     },
     {
-      "name": "ValiderEmployee",
+      "name": "ValiderEmploye",
       "type": "operation",
       "actions": [
         {
+          "name": "Valider l'employé",
           "functionRef": {
             "refName": "ValidateEmployee"
           }
@@ -227,7 +230,7 @@
     {
       "name": "ValidateEmployee",
       "type": "rest"
-    }    
+    }
   ],
   "events": [
     {

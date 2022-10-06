@@ -35,10 +35,26 @@ public class DslWorkflowCache {
       try {
         Workflow zenikaOnBoardingWorkflow =
             Workflow.fromSource(getFileAsString("serverlessworkflow-zenika-onboard.json"));
+        Workflow firstMonthReviewChildWorkflow =
+            Workflow.fromSource(
+                getFileAsString("zenika-onboard-childworkflow-firstmonthreview.json"));
+        Workflow integrationTrainingChildWorkflow =
+            Workflow.fromSource(
+                getFileAsString("zenika-onboard-childworkflow-integrationtraining.json"));
 
         dslWorkflowMap.put(
             zenikaOnBoardingWorkflow.getId() + "-" + zenikaOnBoardingWorkflow.getVersion(),
             zenikaOnBoardingWorkflow);
+        dslWorkflowMap.put(
+            firstMonthReviewChildWorkflow.getId()
+                + "-"
+                + firstMonthReviewChildWorkflow.getVersion(),
+            firstMonthReviewChildWorkflow);
+        dslWorkflowMap.put(
+            integrationTrainingChildWorkflow.getId()
+                + "-"
+                + integrationTrainingChildWorkflow.getVersion(),
+            integrationTrainingChildWorkflow);
 
       } catch (Exception e) {
         System.out.println("Exception: " + e.getMessage());

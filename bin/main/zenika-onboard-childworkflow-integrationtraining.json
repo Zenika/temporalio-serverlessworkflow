@@ -1,0 +1,30 @@
+{
+    "id": "onboarding-child-integrationtraining",
+    "name": "Zenika Formation integration",
+    "version": "1.0",
+    "start": "FormationIntegration",
+    "states": [
+    {
+        "name": "FormationIntegration",
+        "type": "event",
+        "onEvents": [
+          {
+            "eventRefs": [
+              "IntegrationTrainingEvent"
+            ]
+          }
+        ],
+        "stateDataFilter": {
+          "output": "{ \"type\" : \"onboarding-child-integrationtraining subflow\", \"result\" : \"invoked\"}"
+        },
+        "end": true
+      }
+    ],
+    "events": [
+        {
+          "name": "IntegrationTrainingEvent",
+          "type": "com.fasterxml.jackson.databind.JsonNode",
+          "source": "applicationsSource"
+        }
+    ]
+}
